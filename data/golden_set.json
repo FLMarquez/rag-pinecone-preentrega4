@@ -1,0 +1,22 @@
+[
+  {
+    "pregunta": "¿Cómo se configura un timeout personalizado para evitar que una petición HTTP quede colgada indefinidamente?",
+    "documento_id_esperado": "requests-timeouts"
+  },
+  {
+    "pregunta": "¿Qué clase de requests se usa para autenticación HTTP Basic Auth?",
+    "documento_id_esperado": "requests-auth"
+  },
+  {
+    "pregunta": "¿Cómo se reutiliza la conexión TCP entre múltiples peticiones al mismo servidor para mejorar el rendimiento?",
+    "documento_id_esperado": "requests-session"
+  },
+  {
+    "pregunta": "¿Qué excepción lanza requests cuando el servidor no responde dentro del tiempo límite configurado?",
+    "documento_id_esperado": "requests-exceptions"
+  },
+  {
+    "pregunta": "¿Cómo se descarga un archivo grande sin cargarlo completo en memoria RAM?",
+    "documento_id_esperado": "requests-streaming"
+  }
+]
