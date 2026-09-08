@@ -5,7 +5,7 @@ from typing import List
 
 from langchain_community.retrievers import BM25Retriever
 from langchain_core.documents import Document
-from langchain_openai import OpenAIEmbeddings
+from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from langchain_pinecone import PineconeVectorStore
 
 try:
@@ -62,9 +62,10 @@ class RAGSystem:
 
     @staticmethod
     def _build_vector_retriever(top_k: int, namespace: str):
-        embeddings = OpenAIEmbeddings(
+        embeddings = GoogleGenerativeAIEmbeddings(
             model=config.EMBEDDING_MODEL,
-            openai_api_key=config.OPENAI_API_KEY,
+            google_api_key=config.GOOGLE_API_KEY,
+            output_dimensionality=config.EMBEDDING_DIMENSION,
         )
         index = get_pinecone_client().Index(config.INDEX_NAME)
         vectorstore = PineconeVectorStore(index=index, embedding=embeddings, text_key="text")

@@ -5,7 +5,7 @@ embeddings y los sube a Pinecone incluyendo el texto original en la metadata
 Uso:
     python -m src.ingest
 """
-from langchain_openai import OpenAIEmbeddings
+from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from langchain_pinecone import PineconeVectorStore
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
@@ -51,9 +51,10 @@ def run_ingestion() -> None:
     ensure_index_exists()
 
     chunks = build_chunks()
-    embeddings = OpenAIEmbeddings(
+    embeddings = GoogleGenerativeAIEmbeddings(
         model=config.EMBEDDING_MODEL,
-        openai_api_key=config.OPENAI_API_KEY,
+        google_api_key=config.GOOGLE_API_KEY,
+        output_dimensionality=config.EMBEDDING_DIMENSION,
     )
 
     index = get_pinecone_client().Index(config.INDEX_NAME)

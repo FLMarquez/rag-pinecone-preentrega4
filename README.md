@@ -29,21 +29,46 @@ cada uno con frontmatter de metadatos (`id`, `source`, `category`, `page`).
 
 ## 1. Setup del entorno
 
-Requiere **Python 3.10–3.13** (algunas dependencias del ecosistema LangChain
-todavía no publican wheels para 3.14).
+Requiere **Python 3.10–3.13**. Algunas dependencias del ecosistema LangChain
+(en particular `langchain-pinecone`) todavía no publican wheels para
+**Python 3.14** — si tu `python` por defecto es 3.14, `pip install` va a
+fallar con un error del estilo:
+
+```
+ERROR: Could not find a version that satisfies the requirement langchain-pinecone>=0.2.0
+```
+
+Si te pasa esto, no es necesario desinstalar Python 3.14: alcanza con crear
+el entorno virtual apuntando a una versión compatible (3.11, 3.12 o 3.13) que
+tengas instalada en paralelo.
 
 ```bash
-python -m venv .venv
-source .venv/bin/activate   # En Windows: .venv\Scripts\activate
+# Windows: fijate qué versiones de Python tenés instaladas
+py -0
+
+# Creá el venv con una versión compatible (ejemplo: 3.13)
+py -3.13 -m venv .venv          # Windows
+# python3.13 -m venv .venv      # macOS/Linux
+
+.venv\Scripts\activate           # Windows
+# source .venv/bin/activate      # macOS/Linux
+
 pip install -r requirements.txt
 
 cp .env.example .env
-# Completar en .env: PINECONE_API_KEY, OPENAI_API_KEY, INDEX_NAME
+# Completar en .env: PINECONE_API_KEY, GOOGLE_API_KEY, INDEX_NAME
 ```
 
+> Recordá activar el entorno (`.venv\Scripts\activate` en Windows) en **cada
+> terminal nueva** que abras antes de correr los comandos `python -m src....`
+> — si no, van a usar el Python global del sistema (y potencialmente la
+> versión incompatible) en lugar del `.venv`.
+
 Necesitás una cuenta de [Pinecone](https://www.pinecone.io/) (plan gratuito
-alcanza para un índice Serverless) y una API key de OpenAI para generar
-embeddings con `text-embedding-3-small` (1536 dimensiones).
+alcanza para un índice Serverless) y una API key de Google AI Studio
+(https://aistudio.google.com/apikey) para generar embeddings con Gemini
+(`models/gemini-embedding-001`, truncado a 768 dimensiones vía
+`output_dimensionality` para mantener el tamaño de índice).
 
 > **Windows:** si ves caracteres corruptos en tildes/ñ en la consola, corré
 > con `set PYTHONIOENCODING=utf-8` (cmd) o `$env:PYTHONIOENCODING="utf-8"`
@@ -62,8 +87,9 @@ Esto:
 - Se conecta a Pinecone con `PINECONE_API_KEY`.
 - Revisa si ya existe un índice llamado `INDEX_NAME`.
 - Si no existe, crea un índice **Serverless** (`cloud=aws`, `region=us-east-1`
-  por defecto, configurable en `.env`) con `dimension=1536` y `metric=cosine`,
-  consistente con `text-embedding-3-small`.
+  por defecto, configurable en `.env`) con `dimension=768` y `metric=cosine`,
+  consistente con `models/gemini-embedding-001` de Gemini (truncado a 768 con
+  `output_dimensionality`).
 
 > **Mismatch de dimensiones:** si cambiás el modelo de embeddings, actualizá
 > `EMBEDDING_DIMENSION` en `.env` *antes* de crear el índice. Pinecone no
@@ -81,7 +107,8 @@ Qué hace:
 2. Divide cada documento en chunks con `RecursiveCharacterTextSplitter`
    (`CHUNK_SIZE=800`, `CHUNK_OVERLAP=100` caracteres — un punto medio para no
    perder contexto semántico ni diluir la precisión del embedding).
-3. Genera embeddings con `OpenAIEmbeddings` (`text-embedding-3-small`).
+3. Genera embeddings con `GoogleGenerativeAIEmbeddings` (`models/gemini-embedding-001`,
+   truncado a 768 dimensiones).
 4. Sube los vectores a Pinecone con `PineconeVectorStore.add_texts`, usando el
    **namespace** `requests-docs` (configurable) para mantener la búsqueda
    acotada y evitar ruido si en el futuro se agregan otros tipos de datos al
@@ -117,7 +144,28 @@ for doc in resultados:
 `RAGSystem.query(pregunta, k=5)` devuelve los top-k documentos combinando
 ambos rankings vía `EnsembleRetriever`.
 
-## 5. Evaluación (Precision@5 y Recall@5)
+## 5. Generación de respuestas (RAG completo)
+
+`src/generate.py` cierra el pipeline: toma los documentos recuperados por
+`RAGSystem` y le pide a Gemini (`gemini-3.5-flash-lite` por defecto,
+configurable vía `GENERATION_MODEL`) que redacte una respuesta en lenguaje
+natural citando el `id` de cada fuente usada, sin apoyarse en conocimiento
+fuera del contexto recuperado. Llama a la API REST de Gemini directamente
+con `requests` (con reintentos ante timeouts) en vez de usar el SDK
+`google-genai`, que en algunas redes resultó lento/inestable para generación
+de texto.
+
+```bash
+python -m src.generate "¿Cómo configuro un timeout en requests?"
+```
+
+```python
+from src.generate import answer
+
+print(answer("¿Cómo configuro un timeout en requests?"))
+```
+
+## 6. Evaluación (Precision@5 y Recall@5)
 
 `data/golden_set.json` define 5 preguntas con su documento fuente esperado
 (`documento_id_esperado`, referenciando el `id` de un archivo en
@@ -139,7 +187,7 @@ promedios. Los valores reales dependen de tus embeddings/índice — ejecutá
 `python -m src.evaluate` para tu propio reporte. Como referencia, esta es la
 salida obtenida corriendo solo la mitad léxica (BM25) del retriever híbrido
 sobre las 5 preguntas del golden set (sin componente vectorial, que requiere
-credenciales reales de Pinecone/OpenAI):
+credenciales reales de Pinecone/Google):
 
 ```
 === Evaluación del RAGSystem (Golden Set) ===
@@ -182,8 +230,9 @@ exacta de términos.
 
 ## Decisiones de diseño / errores evitados
 
-- **Dimensión del índice**: fijada en 1536 para coincidir con
-  `text-embedding-3-small` (configurable vía `.env` si se cambia de modelo).
+- **Dimensión del índice**: fijada en 768, truncando `models/gemini-embedding-001`
+  de Gemini vía `output_dimensionality` (configurable vía `.env` si se cambia
+  de modelo).
 - **Namespace**: todos los vectores de este dataset se suben al namespace
   `requests-docs`, evitando mezclar búsquedas con otros tipos de datos que
   pudieran convivir en el mismo índice.
